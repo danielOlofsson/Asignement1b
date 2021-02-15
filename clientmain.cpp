@@ -7,6 +7,9 @@
 #include <sys/socket.h>
 #include <errno.h>
 #include <string.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <sys/time.h>
 // Included to get the support library
 #include <calcLib.h>
 
@@ -40,9 +43,11 @@ int main(int argc, char *argv[]){
   int recivedValue;
   int client_socket;
   int numbytes;
-  struct protoent *servptr;
   char buf[256];
-  
+  struct timeval timeout; 
+  timeout.tv_sec = 2;
+  timeout.tv_usec = 0;
+
    memset(&hints, 0, sizeof(hints));
    hints.ai_family = AF_UNSPEC; // AF_INET , AF_INET6
    hints.ai_socktype = SOCK_DGRAM; // <<--- TRANSPORT PROTOCOL!!
@@ -75,10 +80,14 @@ int main(int argc, char *argv[]){
     break;
   }
   
+  if(setsockopt(client_socket,SOL_SOCKET,SO_RCVTIMEO,&timeout,sizeof(timeout)) < 0)
+  {
+    fprintf(stderr, "SO_RCVSOCO failed\n");
+  }
+
 
 
   ssize_t sentbytes;
-
   //init första sendto structen
   struct calcMessage firstStruct;
   firstStruct.type = htons(22);
@@ -111,7 +120,7 @@ int main(int argc, char *argv[]){
     printf("numbytes = %d\n", numbytes);
     #endif
 
-    if(numbytes == 50)
+    if(numbytes == sizeof(calcProtocol))
     {
       
       //ändra så värnden blir läsbara.
@@ -120,9 +129,9 @@ int main(int argc, char *argv[]){
       convertedStruct.minor_version = ntohs(test->minor_version);
       convertedStruct.id = ntohl(test->id);
       convertedStruct.arith = ntohl(test->arith);
-      convertedStruct.inValue1 = ntohs(test->inValue1);
-      convertedStruct.inValue2 = ntohs(test->inValue2);
-      convertedStruct.inResult = ntohs(test->inResult);
+      convertedStruct.inValue1 = ntohl(test->inValue1);
+      convertedStruct.inValue2 = ntohl(test->inValue2);
+      convertedStruct.inResult = ntohl(test->inResult);
       convertedStruct.flValue1 = test->flValue1;
       convertedStruct.flValue2 = test->flValue2;
       convertedStruct.flResult = test->flResult;
@@ -191,13 +200,13 @@ int main(int argc, char *argv[]){
     }
 
     convertedStruct.type = htons(convertedStruct.type);
-    convertedStruct.type = htons(convertedStruct.major_version);
-    convertedStruct.type = htons(convertedStruct.minor_version);
-    convertedStruct.type = htonl(convertedStruct.id);
-    convertedStruct.type = htonl(convertedStruct.arith);
-    convertedStruct.type = htonl(convertedStruct.inValue1);
-    convertedStruct.type = htonl(convertedStruct.inValue2);
-    convertedStruct.type = htonl(convertedStruct.inResult);
+    convertedStruct.major_version = htons(convertedStruct.major_version);
+    convertedStruct.minor_version = htons(convertedStruct.minor_version);
+    convertedStruct.id = htonl(convertedStruct.id);
+    convertedStruct.arith = htonl(convertedStruct.arith);
+    convertedStruct.inValue1 = htonl(convertedStruct.inValue1);
+    convertedStruct.inValue2 = htonl(convertedStruct.inValue2);
+    convertedStruct.inResult = htonl(convertedStruct.inResult);
 
     sentbytes=sendto(client_socket,&convertedStruct,sizeof(convertedStruct), NULL,  p->ai_addr,p->ai_addrlen);
     printf("Skickade %ld bytes.\n", sentbytes);
@@ -216,10 +225,20 @@ int main(int argc, char *argv[]){
     #endif
 
 
-
+    }
+    else
+    {
+        recivedMessage = (calcMessage *)test;
+        if(ntohl(recivedMessage->message) == 2)
+        {
+          printf("NOT OK");
+          exit(2);
+        }
+        exit(2);
     }
 
 
 
     delete test;
+    delete recivedMessage;
 }
