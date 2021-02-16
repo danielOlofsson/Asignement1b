@@ -13,7 +13,7 @@
 // Included to get the support library
 #include <calcLib.h>
 
-#define DEBUG
+
 #include "protocol.h"
 
 int main(int argc, char *argv[]){
@@ -34,8 +34,9 @@ int main(int argc, char *argv[]){
   };
 
 
-  int port=atoi(Destport);
+  
 #ifdef DEBUG 
+  int port=atoi(Destport);
   printf("Host %s, and port %d.\n",Desthost,port);
 #endif
 
@@ -43,8 +44,8 @@ int main(int argc, char *argv[]){
   int recivedValue;
   int client_socket;
   int numbytes;
-  char buf[256];
   struct timeval timeout; 
+  int timeoutCounter = 0;
   timeout.tv_sec = 2;
   timeout.tv_usec = 0;
 
@@ -75,19 +76,20 @@ int main(int argc, char *argv[]){
       freeaddrinfo(servinfo);
       exit(1);
     }
-
+    #ifdef DEBUG
     printf("Socket created.\n");
+    #endif
     break;
   }
   
   if(setsockopt(client_socket,SOL_SOCKET,SO_RCVTIMEO,&timeout,sizeof(timeout)) < 0)
   {
-    fprintf(stderr, "SO_RCVSOCO failed\n");
+    fprintf(stderr,"failed to set socketopt");
+    exit(3);
   }
-
-
-
-  ssize_t sentbytes;
+ 
+  ssize_t sentbytes = 0;
+  
   //init första sendto structen
   struct calcMessage firstStruct;
   firstStruct.type = htons(22);
@@ -96,26 +98,51 @@ int main(int argc, char *argv[]){
   firstStruct.major_version = htons(1);
   firstStruct.minor_version = htons(0);
 
-  sentbytes=sendto(client_socket,&firstStruct,sizeof(firstStruct), NULL,  p->ai_addr,p->ai_addrlen);
-  printf("Skickade %ld bytes.\n", sentbytes);
-
-
   calcProtocol *test = new calcProtocol;
   calcProtocol convertedStruct;  
   calcMessage *recivedMessage = new calcMessage;
+
+  while(timeoutCounter < 3)
+  {
+  sentbytes = sendto(client_socket,&firstStruct,sizeof(firstStruct), 0,  p->ai_addr,p->ai_addrlen);
+  if(sentbytes < 0)
+  {
+    fprintf(stderr,"sendTo error");
+    exit(1);
+  }
+  #ifdef DEBUG
+  printf("Skickade %ld bytes.\n", sentbytes);
+  #endif
+
+  
   #ifdef DEBUG
   printf("size of test = %ld\n", sizeof(*test));
   #endif
-
- if ((numbytes = recvfrom(client_socket, test, sizeof(*test), 0,
-			p->ai_addr,&p->ai_addrlen)) == -1) 
+  
+numbytes = recvfrom(client_socket, test, sizeof(*test), 0,
+		p->ai_addr,&p->ai_addrlen);
+  if(numbytes < 0) 
     {
-			if(client_socket!=NULL)
+      if(errno == EAGAIN)
       {
-				perror("recvfrom");
-			}
-			exit(1);
+        timeoutCounter++;
+        #ifdef DEBUG
+        printf("TIMEOut nr %d\n", timeoutCounter);
+        #endif
+        if(timeoutCounter == 3)
+        {
+          printf("Server did not reply terminating");
+          exit(5);
+        }
+      }
 		}
+    else
+    {
+      break;
+    }
+
+  }
+    timeoutCounter = 0;
     #ifdef DEBUG
     printf("numbytes = %d\n", numbytes);
     #endif
@@ -138,11 +165,11 @@ int main(int argc, char *argv[]){
 
 
       //printf("recived CalcValue struct:\nType: %d\nmajor_version: %d\nminor_version: %d\nidf: %d\narieth: %d\ninValue1: %d\ninValue2: %d\ninResult: %d\nflValue1: %8.8g\nflValue2: %8.8g\nflResult: %8.8g\n",test->type,test->major_version,test->minor_version,test->id, test->arith, test->inValue1, test->inValue2, test->inResult, test->flValue1,test->flValue2, test->flResult);
-      
+      #ifdef DEBUG
       printf("recived CalcValue struct:\nType: %d\nmajor_version: %d\nminor_version: %d\nidf: %d\narieth: %d\ninValue1: %d\ninValue2: %d\ninResult: %d\nflValue1: %8.8g\nflValue2: %8.8g\nflResult: %8.8g\n",convertedStruct.type, convertedStruct.major_version, convertedStruct.minor_version, convertedStruct.id, convertedStruct.arith, convertedStruct.inValue1, convertedStruct.inValue2, convertedStruct.inResult, convertedStruct.flValue1, convertedStruct.flValue2, convertedStruct.flResult);
+      #endif
 
-
-      if(convertedStruct.arith==1)
+    if(convertedStruct.arith==1)
     {
       convertedStruct.inResult = convertedStruct.inValue1 + convertedStruct.inValue2;
       #ifdef DEBUG
@@ -208,23 +235,47 @@ int main(int argc, char *argv[]){
     convertedStruct.inValue2 = htonl(convertedStruct.inValue2);
     convertedStruct.inResult = htonl(convertedStruct.inResult);
 
-    sentbytes=sendto(client_socket,&convertedStruct,sizeof(convertedStruct), NULL,  p->ai_addr,p->ai_addrlen);
-    printf("Skickade %ld bytes.\n", sentbytes);
-
-     if ((numbytes = recvfrom(client_socket, recivedMessage, sizeof(*recivedMessage), 0,
-			p->ai_addr,&p->ai_addrlen)) == -1) 
+     while(timeoutCounter < 3)
+  {
+    sentbytes=sendto(client_socket,&convertedStruct,sizeof(convertedStruct), 0,  p->ai_addr,p->ai_addrlen);
+    if(sentbytes < 0)
     {
-			if(client_socket!=NULL)
-      {
-				perror("recvfrom");
-			}
-			exit(1);
-		}
+      fprintf(stderr,"sendTo error");
+      exit(1);
+    }
     #ifdef DEBUG
-    printf("numbytes = %d\nMessage(0 = N/A, 1 = OK, 2 = Not OK) = %d\n", numbytes, ntohl(recivedMessage->message));
+    printf("Skickade %ld bytes.\n", sentbytes);
     #endif
-
-
+      numbytes = recvfrom(client_socket, recivedMessage, sizeof(*recivedMessage), 0,
+			p->ai_addr,&p->ai_addrlen);
+      if(numbytes < 0)
+      {
+			  if(errno == EAGAIN)
+        {
+          timeoutCounter++;
+          #ifdef DEBUG
+          printf("TIMEOut nr %d", timeoutCounter);
+          #endif
+          if(timeoutCounter == 3)
+          {
+            printf("Server did not reply terminating");
+            exit(5);
+          }
+        }
+        else
+        {
+          fprintf(stderr,"recvFrom error");
+          exit(4);
+        }
+      }
+      else
+      {
+        break;
+      } 
+		}
+    //#ifdef DEBUG
+    printf("Message(0 = N/A, 1 = OK, 2 = Not OK) = %d\n", ntohl(recivedMessage->message));
+    //#endif
     }
     else
     {
@@ -234,7 +285,7 @@ int main(int argc, char *argv[]){
           printf("NOT OK");
           exit(2);
         }
-        exit(2);
+      exit(2);
     }
 
 
