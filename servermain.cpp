@@ -5,7 +5,6 @@
 #include <sys/time.h>
 
 /* You will to add includes here */
-#include <poll.h>
 #include <string.h>
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -29,7 +28,8 @@ void checkJobbList(int signum){
 
   printf("Let me be, I want to sleep.\n");
 
-  if(loopCount>20){
+  if(loopCount>20)
+  {
     printf("I had enough.\n");
     terminate=1;
   }
@@ -37,75 +37,59 @@ void checkJobbList(int signum){
   return;
 }
 
-int initListenerSocket(const char* destHost, const char* destPort)
+void convertCalcMsgToPrintable(calcMessage &clientMsg)
 {
-  int listenSocket;
-  int recivedValue;
-  int yes=1;
-  struct addrinfo hints, *servinfo, *p;
+  clientMsg.type = ntohs(clientMsg.type);
+  clientMsg.message = nthol(clientMsg.message);
+  clientMsg.protocol = ntohs(clientMsg.protocol);
+  clientMsg.major_version = ntohs(clientMsg.major_version);
+  clientMsg.major_version = ntohs(clientMsg.minor_version);
+}
 
-  memset(&hints, 0, sizeof hints);
-  hints.ai_family = AF_UNSPEC;
-  hints.ai_socktype = SOCK_DGRAM;
-  hints.ai_flags = AI_PASSIVE;
+void convertCalcMsgToSendable(calcMessage &serverMsg)
+{
+  clientMsg.type = htons(clientMsg.type);
+  clientMsg.message = htonl(clientMsg.message);
+  clientMsg.protocol = htons(clientMsg.protocol);
+  clientMsg.major_version = htons(clientMsg.major_version);
+  clientMsg.major_version = htons(clientMsg.minor_version);
+}
 
-  if ((recivedValue = getaddrinfo(destHost, destPort, &hints, &servinfo)) != 0) 
+void convertCalcProtocolToPrintable(calcProtocol &clientMsg)
+{
+  clientMsg.type = ntohs(clientMsg->type);
+  clientMsg.major_version = ntohs(clientMsg->major_version);
+  clientMsg.minor_version = ntohs(clientMsg->minor_version);
+  clientMsg.id = ntohl(clientMsg->id);
+  clientMsg.arith = ntohl(clientMsg->arith);
+  clientMsg.inValue1 = ntohl(clientMsg->inValue1);
+  clientMsg.inValue2 = ntohl(clientMsg->inValue2);
+  clientMsg.inResult = ntohl(clientMsg->inResult);
+}
+
+void convertCalcProtocolToPrintable(calcProtocol &serverMsg)
+{
+  clientMsg.type = htons(clientMsg->type);
+  clientMsg.major_version = htons(clientMsg->major_version);
+  clientMsg.minor_version = htons(clientMsg->minor_version);
+  clientMsg.id = htonl(clientMsg->id);
+  clientMsg.arith = htonl(clientMsg->arith);
+  clientMsg.inValue1 = htonl(clientMsg->inValue1);
+  clientMsg.inValue2 = htonl(clientMsg->inValue2);
+  clientMsg.inResult = htonl(clientMsg->inResult);
+}
+
+
+bool checkIfSupports(calcMessage clientMsg)
+{
+  bool supports = false;
+  if(clientMsg.major_version == 1 && clientMsg.message == 0 && clientMsg.minor_version = 0 && clientMsg.protocol = 17 && clientMsg.type == 22)
   {
-      fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(recivedValue));
-      exit(1);
+    supports == true;
   }
+  return supports;
+}
   
-  for(p = servinfo; p != NULL; p = p->ai_next)
-  {
-    listenSocket = socket(p->ai_family, p->ai_socktype, p->ai_protocol);
-    if (listenSocket < 0) { 
-      continue;
-    }
-    
-    setsockopt(listenSocket, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int));
-
-    if (bind(listenSocket, p->ai_addr, p->ai_addrlen) < 0) 
-    {
-      close(listenSocket);
-      continue;
-    }
-
-    break;
-  }
-
-  freeaddrinfo(servinfo); 
-
-    
-    if (p == NULL) 
-    {
-      return -1;
-    }
-
-    
-    if (listen(listenSocket, 10) == -1) 
-    {
-      return -1;
-    }
-
-  return listenSocket;
-}
-
-
-void addNewConnection(struct pollfd *pfds[], int newSocket, int* nrOfClients, int *maxNrOfClients)
-{
-  //add space if needed
-  if(*nrOfClients == *maxNrOfClients)
-  {
-    *maxNrOfClients *=2;
-
-    *pfds = realloc(*pfds, sizeof(**pfds) * (*maxNrOfClients));
-  }
-
-  (*pfds)[*nrOfClients].events = POLLIN;
-
-  (*nrOfClients)++;
-
-}
 
 
 int main(int argc, char *argv[]){
@@ -150,78 +134,117 @@ int main(int argc, char *argv[]){
 
   printf("done.\n");
 
-
-  int listener; // lysnar socketen
-  int newSocket;
   struct sockaddr_storage remoteaddr; // klient address  
   socklen_t addrlen;
+  struct addrinfo hints, *servinfo, *p, *clientinfo;
+  int recivedValue;
+  int serverSocket;
+  int numbytes;
 
-  char buffer[300];
-  char remoteIp[INET6_ADDRSTRLEN];
+  memset(&hints, 0, sizeof(hints));
+  hints.ai_family = AF_UNSPEC; // AF_INET , AF_INET6
+  hints.ai_socktype = SOCK_DGRAM; // <<--- TRANSPORT PROTOCOL!!
+  hints.ai_flags = AI_PASSIVE; 
 
-  int nrOfClients = 0;
-  int maxNrOfClients = 10;
-  size_t pollfdSize = sizeof(pollfd) * maxNrOfClients;
-  struct pollfd *pfds = malloc(pollfdSize);
-
-  listener = initListenerSocket(Desthost,Destport);
-
-  if(listener == -1)
+  if ((recivedValue = getaddrinfo(Desthost, Destport, &hints, &servinfo)) != 0) 
   {
-    fprintf(stderr,"error initiating listening socket");
-    exit(3);
+    fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(recivedValue));
+    exit(1);
   }
 
-  pfds[0].fd = listener;
-  pfds[0].events = POLLIN;
-
-  nrOfClients++;
-
-  for(;;)
+  for(p = servinfo; p != NULL; p = p->ai_next) 
   {
-    int poll_count = poll(pfds,nrOfClients, -1);
-
-    if(poll_count == -1)
+    if ((serverSocket = socket(p->ai_family, p->ai_socktype,
+	  p->ai_protocol)) == -1) 
     {
-      perror("poll error");
-      exit(4);
+      printf("Socket creation failed.\n");
+      continue;
+    }
+  
+    if (setsockopt(serverSocket, SOL_SOCKET, SO_REUSEADDR, &yes,
+        sizeof(int)) == -1) {
+      perror("setsockopt");
+      exit(1);
     }
 
-    for(int i = 0; i < nrOfClients; i++)
+    if (bind(serverSocket, p->ai_addr, p->ai_addrlen) == -1) {
+			close(serverSocket);
+			perror("listener: bind");
+			continue;
+		}
+
+    #ifdef DEBUG
+    printf("Socket created.\n");
+    #endif
+    break;
+  }
+
+  freeaddrinfo(servinfo);
+
+  if (p == NULL) 
+  {
+    fprintf(stderr, "Client failed to create proper socket.\n");
+    freeaddrinfo(servinfo);
+    exit(1);
+  }
+
+  addrlen = sizeof(addrlen);
+
+  int klient_socket;
+  int dL, sL;
+
+  struct calcMessage firstStruct;
+  firstStruct.type = htons(22);
+  firstStruct.message = htonl(0);
+  firstStruct.protocol = htons(17);
+  firstStruct.major_version = htons(1);
+  firstStruct.minor_version = htons(0);
+
+  calcProtocol *calcPtr = new calcProtocol;
+  calcMessage *msgPtr = new calcMessage;
+
+  struct clientAddrArr
+  {
+    struct sockaddr *ai_addr;
+    socklen_t ai_addrlen;
+  };
+  clientAddrArr savedClients[1];
+
+  while(1)
+  {
+    numbytes = recvfrom(serverSocket, calcPtr, sizeof(*calcPtr), 0,
+    p->ai_addr,&p->ai_addrlen);
+    
+    if(numbytes < 0) 
     {
-      //cheking if any socket is ready to read
-      if(pfds[i].revents & POLLIN) 
-      {
-        if(pfds[i].fd == listener)
-        {
-          //handels new connection if listener is reday
-
-          addrlen = sizeof(remoteaddr);
-          newSocket = accept(listener,(struct sockaddr*)&remoteaddr,&addrlen);
-
-          if(newSocket == -1)
-          {
-            perror("accept error");
-          }
-          else
-          {
-            addNewConnection(&pfds,newSocket,&nrOfClients,&maxNrOfClients);
-
-            #ifdef DEBUG
-            printf("New connection");
-            #endif
-          }
-        }
-        else 
-        {
-          //if not the listener its a regular client
-
-        }
-
-      }
+      perror("revfrom error");
+      continue;
+		}
+    else
+    {
+      savedClients[0]->ai_addr = p->ai_addr;
+      savedClients[0]->ai_addrlen = p->ai_addrlen;
+      break;
     }
+
+    //Client Skickar sitt svar.... 
+    if(numbytes == sizeof(calcProtocol))
+    {
+
+    }
+    else
+    {
+      msgPtr = (calcMessage *)calcPtr;
+
+
+    }
+
+
+
 
   }
 
+  delete calcPtr;
+  delete msgPtr;
   return(0);
 }
