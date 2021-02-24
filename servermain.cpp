@@ -10,6 +10,7 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netdb.h>
+#include <stdlib.h>
 // Included to get the support library
 #include <calcLib.h>
 
@@ -36,26 +37,75 @@ void checkJobbList(int signum){
   return;
 }
 
-int initListenerSocket(char* destHost, char* destPort)
+int initListenerSocket(const char* destHost, const char* destPort)
 {
   int listenSocket;
   int recivedValue;
-
+  int yes=1;
   struct addrinfo hints, *servinfo, *p;
 
   memset(&hints, 0, sizeof hints);
   hints.ai_family = AF_UNSPEC;
-  hints.ai_socktype = SOCK_STREAM;
+  hints.ai_socktype = SOCK_DGRAM;
   hints.ai_flags = AI_PASSIVE;
 
-  if ((rv = getaddrinfo(destHost, destPort, &hints, &servinfo)) != 0) 
+  if ((recivedValue = getaddrinfo(destHost, destPort, &hints, &servinfo)) != 0) 
   {
-      fprintf(stderr, "selectserver: %s\n", gai_strerror(rv));
+      fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(recivedValue));
       exit(1);
   }
+  
+  for(p = servinfo; p != NULL; p = p->ai_next)
+  {
+    listenSocket = socket(p->ai_family, p->ai_socktype, p->ai_protocol);
+    if (listenSocket < 0) { 
+      continue;
+    }
+    
+    setsockopt(listenSocket, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int));
 
+    if (bind(listenSocket, p->ai_addr, p->ai_addrlen) < 0) 
+    {
+      close(listenSocket);
+      continue;
+    }
+
+    break;
+  }
+
+  freeaddrinfo(servinfo); 
+
+    
+    if (p == NULL) 
+    {
+      return -1;
+    }
+
+    
+    if (listen(listenSocket, 10) == -1) 
+    {
+      return -1;
+    }
+
+  return listenSocket;
 }
 
+
+void addNewConnection(struct pollfd *pfds[], int newSocket, int* nrOfClients, int *maxNrOfClients)
+{
+  //add space if needed
+  if(*nrOfClients == *maxNrOfClients)
+  {
+    *maxNrOfClients *=2;
+
+    *pfds = realloc(*pfds, sizeof(**pfds) * (*maxNrOfClients));
+  }
+
+  (*pfds)[*nrOfClients].events = POLLIN;
+
+  (*nrOfClients)++;
+
+}
 
 
 int main(int argc, char *argv[]){
@@ -74,7 +124,7 @@ int main(int argc, char *argv[]){
 
   if (Desthost == NULL || Destport == NULL){
     printf("Missing host or port.\n");
-    exit(1);
+    exit(2);
   };
 
 
@@ -111,11 +161,67 @@ int main(int argc, char *argv[]){
 
   int nrOfClients = 0;
   int maxNrOfClients = 10;
+  size_t pollfdSize = sizeof(pollfd) * maxNrOfClients;
+  struct pollfd *pfds = malloc(pollfdSize);
 
-  struct pollfd *pfds = malloc(sizeof *pfds *maxNrOfClients);
+  listener = initListenerSocket(Desthost,Destport);
 
-  
+  if(listener == -1)
+  {
+    fprintf(stderr,"error initiating listening socket");
+    exit(3);
+  }
 
+  pfds[0].fd = listener;
+  pfds[0].events = POLLIN;
+
+  nrOfClients++;
+
+  for(;;)
+  {
+    int poll_count = poll(pfds,nrOfClients, -1);
+
+    if(poll_count == -1)
+    {
+      perror("poll error");
+      exit(4);
+    }
+
+    for(int i = 0; i < nrOfClients; i++)
+    {
+      //cheking if any socket is ready to read
+      if(pfds[i].revents & POLLIN) 
+      {
+        if(pfds[i].fd == listener)
+        {
+          //handels new connection if listener is reday
+
+          addrlen = sizeof(remoteaddr);
+          newSocket = accept(listener,(struct sockaddr*)&remoteaddr,&addrlen);
+
+          if(newSocket == -1)
+          {
+            perror("accept error");
+          }
+          else
+          {
+            addNewConnection(&pfds,newSocket,&nrOfClients,&maxNrOfClients);
+
+            #ifdef DEBUG
+            printf("New connection");
+            #endif
+          }
+        }
+        else 
+        {
+          //if not the listener its a regular client
+
+        }
+
+      }
+    }
+
+  }
 
   return(0);
 }
