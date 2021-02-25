@@ -10,6 +10,7 @@
 #include <sys/socket.h>
 #include <netdb.h>
 #include <stdlib.h>
+#include <arpa/inet.h>
 // Included to get the support library
 #include <calcLib.h>
 
@@ -36,6 +37,16 @@ void checkJobbList(int signum){
   
   return;
 }
+
+void *get_in_addr(struct sockaddr *sa)
+{
+    if (sa->sa_family == AF_INET) {
+        return &(((struct sockaddr_in*)sa)->sin_addr);
+    }
+
+    return &(((struct sockaddr_in6*)sa)->sin6_addr);
+}
+
 
 void convertCalcMsgToPrintable(struct calcMessage* clientMsg)
 {
@@ -115,7 +126,7 @@ void initiateRandomCalcProtocol(calcProtocol *protocolMsg)
 
     protocolMsg->flValue1 = fv1;
     protocolMsg->flValue2 = fv2;
-    protocolMsg->flResult = (double)0;
+    protocolMsg->flResult = 0.f;
     protocolMsg->inValue1 = 0;
     protocolMsg->inValue2 = 0;
     protocolMsg->inResult = 0;
@@ -182,6 +193,85 @@ void initiateRandomCalcProtocol(calcProtocol *protocolMsg)
 }
 
 
+bool compareResult(calcProtocol *protocolMsg)
+{
+  bool correctResult = false;
+  double fv1,fv2,fresult;
+  int iv1 ,iv2 ,iresult;
+  double quotient;
+  
+  if(protocolMsg->arith == 5)
+  {
+    fresult=protocolMsg->flValue1+ protocolMsg->flValue2;
+    quotient = abs(fresult - protocolMsg->inResult);
+    if(quotient < 0.0001)
+    {
+      correctResult = true;
+    }
+  }
+  else if (protocolMsg->arith == 6)
+  {
+    fresult=protocolMsg->flValue1 - protocolMsg->flValue2;
+    quotient = abs(fresult - protocolMsg->inResult);
+    if(quotient < 0.0001)
+    {
+      correctResult = true;
+    }
+  } 
+  else if (protocolMsg->arith == 7)
+  {
+    fresult=protocolMsg->flValue1 * protocolMsg->flValue2;
+    quotient = abs(fresult - protocolMsg->inResult);
+    if(quotient < 0.0001)
+    {
+      correctResult = true;
+    }
+  } 
+  else if (protocolMsg->arith == 8)
+  {
+    fresult=protocolMsg->flValue1 / protocolMsg->flValue2;
+    quotient = abs(fresult - protocolMsg->inResult);
+    if(quotient < 0.0001)
+    {
+      correctResult = true;
+    }
+  }
+  else if(protocolMsg->arith == 1)
+  {
+    iresult=protocolMsg->inValue1 + protocolMsg->inValue2;
+    if(iresult == protocolMsg->inResult)
+    {
+      correctResult = true;
+    }
+  } 
+  else if (protocolMsg->arith == 2)
+  {
+    iresult=protocolMsg->inValue1 - protocolMsg->inValue2;
+    if(iresult == protocolMsg->inResult)
+    {
+      correctResult = true;
+    }
+  }
+  else if (protocolMsg->arith == 3)
+  {
+    iresult=protocolMsg->inValue1 * protocolMsg->inValue2;
+    if(iresult == protocolMsg->inResult)
+    {
+      correctResult = true;
+    }
+  } 
+  else if (protocolMsg->arith == 4)
+  {
+    iresult=protocolMsg->inValue1 / protocolMsg->inValue2;
+    if(iresult == protocolMsg->inResult)
+    {
+      correctResult = true;
+    }
+  }
+  return correctResult;
+}
+
+
 int main(int argc, char *argv[]){
   
   /* Do more magic */
@@ -231,10 +321,33 @@ int main(int argc, char *argv[]){
   int serverSocket;
   int numbytes;
   int yes = 1;
+
+  char readableIp1[INET6_ADDRSTRLEN];
+  char readableIp2[INET6_ADDRSTRLEN];
+
+
+
   memset(&hints, 0, sizeof(hints));
   hints.ai_family = AF_UNSPEC; // AF_INET , AF_INET6
   hints.ai_socktype = SOCK_DGRAM; // <<--- TRANSPORT PROTOCOL!!
   hints.ai_flags = AI_PASSIVE; 
+
+  calcMessage okMsg, notOkMsg;
+  okMsg.major_version = 1;
+  okMsg.minor_version = 0;
+  okMsg.message = 1;
+  okMsg.protocol = 17;
+  okMsg.type = 2;
+
+  convertCalcMsgToSendable(&okMsg);
+
+  notOkMsg.major_version = 1;
+  notOkMsg.minor_version = 0;
+  notOkMsg.message = 2;
+  notOkMsg.protocol = 17;
+  notOkMsg.type = 2;
+
+  convertCalcMsgToSendable(&notOkMsg);
 
   if ((recivedValue = getaddrinfo(Desthost, Destport, &hints, &servinfo)) != 0) 
   {
@@ -283,28 +396,33 @@ int main(int argc, char *argv[]){
   int klient_socket;
   int dL, sL;
 
-  struct calcMessage firstStruct;
-  firstStruct.type = htons(22);
-  firstStruct.message = htonl(0);
-  firstStruct.protocol = htons(17);
-  firstStruct.major_version = htons(1);
-  firstStruct.minor_version = htons(0);
 
   calcProtocol *calcPtr = new calcProtocol;
+  calcProtocol *tempCalcPtr = new calcProtocol;
   calcMessage *msgPtr = new calcMessage;
 
   struct clientAddrArr
   {
-    struct sockaddr *ai_addr;
+    struct sockaddr_in *ai_addr;
+    struct addrinfo test;
     socklen_t ai_addrlen;
+    struct calcProtocol *clientCalcProtocol;
+    uint32_t idNr;
   };
-  clientAddrArr savedClients[1];
 
+  clientAddrArr savedClients[1];
+  sockaddr_in clientIn;
+  struct addrinfo testClient;
+  socklen_t clientinSize = sizeof(clientIn);
+  socklen_t testClientSize = sizeof(testClient);
   while(1)
   {
+    /*
     numbytes = recvfrom(serverSocket, calcPtr, sizeof(*calcPtr), 0,
-    p->ai_addr,&p->ai_addrlen);
-    
+    (struct sockaddr *)&clientIn,&clientinSize);*/
+    numbytes = recvfrom(serverSocket, calcPtr, sizeof(*calcPtr), 0,
+    (struct sockaddr *)&testClient,&testClientSize);
+
     if(numbytes < 0) 
     {
       perror("revfrom error");
@@ -312,26 +430,87 @@ int main(int argc, char *argv[]){
 		}
     else
     {
-      savedClients[0].ai_addr = p->ai_addr;
-      savedClients[0].ai_addrlen = p->ai_addrlen;
-      break;
+      //Make it so it works with more structs and make sure to dynamically allocate the array
+      /*
+      savedClients[0].ai_addr->sin_addr = clientIn.sin_addr;
+      savedClients[0].ai_addrlen = sizeof(clientinSize);
+      savedClients[0].clientCalcProtocol = calcPtr;
+      */
+
+      savedClients[0].test.ai_addr = testClient.ai_addr;
+      savedClients[0].test.ai_addrlen = sizeof(testClientSize);
+      savedClients[0].clientCalcProtocol = calcPtr;
+
     }
 
     //Client Skickar sitt svar.... 
     if(numbytes == sizeof(calcProtocol))
     {
-      
+      convertCalcProtocolToPrintable(calcPtr);
+
+      inet_ntop(savedClients[0].test.ai_family, get_in_addr((struct sockaddr *)savedClients[0].test.ai_addr),
+			readableIp1, sizeof(readableIp1));
+
+      inet_ntop(testClient.ai_family, get_in_addr((struct sockaddr *)testClient.ai_addr),
+			readableIp2, sizeof(readableIp2));
+
+      //kolla ip också! 
+      if(savedClients[0].clientCalcProtocol->id == calcPtr->id && readableIp1 == readableIp2)
+      {
+        //should calculate the result and see if the client got same answer.
+        
+        if(compareResult(savedClients[0].clientCalcProtocol) == true)
+        {
+          //send a calcmsg that says it was ok
+          
+          numbytes = sendto(serverSocket,&okMsg,sizeof(calcMessage), 0, (struct sockaddr *)savedClients[0].ai_addr,savedClients[0].ai_addrlen);
+          if(numbytes < 0)
+          {
+            fprintf(stderr,"sendTo error");
+            break;
+          }
+          continue;
+        }
+        else
+        {
+          //send A calcMsg that says it was rejected
+
+          numbytes = sendto(serverSocket,&notOkMsg,sizeof(calcMessage), 0, (struct sockaddr *)savedClients[0].ai_addr,savedClients[0].ai_addrlen);
+          if(numbytes < 0)
+          {
+            fprintf(stderr,"sendTo error");
+            break;
+          }
+          continue;
+        }
+        
+      }
     }
-    else
+    else//either supports or not
     {
       msgPtr = (calcMessage *)calcPtr;
       convertCalcMsgToPrintable(msgPtr);
       if(checkIfSupports(msgPtr) == true)
       {
-        //protocol supported initiate and send calcprotocol
+        //protocol supported initiated and send calcprotocol
+        tempCalcPtr->id = 1;
+        //intiates and converts to sendable
+        initiateRandomCalcProtocol(tempCalcPtr);
+
+        numbytes = sendto(serverSocket,&tempCalcPtr,sizeof(tempCalcPtr), 0, (struct sockaddr*)savedClients[0].ai_addr,savedClients[0].ai_addrlen);
+        if(numbytes < 0)
+        {
+          fprintf(stderr,"sendTo error");
+          break;
+        }
+        continue;
+      }
+      else
+      {
+        //protocol not supoorted send back a calcMessage
+
       }
     }
-
 
   }
 
