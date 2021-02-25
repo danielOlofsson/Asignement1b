@@ -54,7 +54,7 @@ void convertCalcMsgToPrintable(struct calcMessage* clientMsg)
   clientMsg->message = ntohl(clientMsg->message);
   clientMsg->protocol = ntohs(clientMsg->protocol);
   clientMsg->major_version = ntohs(clientMsg->major_version);
-  clientMsg->major_version = ntohs(clientMsg->minor_version);
+  clientMsg->minor_version = ntohs(clientMsg->minor_version);
 }
 
 void convertCalcMsgToSendable(struct calcMessage* serverMsg)
@@ -94,6 +94,7 @@ void convertCalcProtocolToSendable(calcProtocol *serverMsg)
 bool checkIfSupports(calcMessage* clientMsg)
 {
   bool supports = false;
+  
   if(clientMsg->major_version == 1 && clientMsg->message == 0 && clientMsg->minor_version == 0 && clientMsg->protocol == 17 && clientMsg->type == 22)
   {
     supports = true;
@@ -102,17 +103,18 @@ bool checkIfSupports(calcMessage* clientMsg)
 }
   
 
-void initiateRandomCalcProtocol(calcProtocol *protocolMsg)
+void initiateRandomCalcProtocol(calcProtocol *protocolMsg, int idNr)
 {
-  double fv1,fv2,fresult;
-  int iv1 ,iv2 ,iresult;
+  double fv1,fv2;
+  int iv1 ,iv2;
   char msg[256];
   char *op = randomType();
 
   protocolMsg->type = 1;
   protocolMsg->major_version = 1;
   protocolMsg->minor_version = 0;
-  
+  protocolMsg->id = idNr;
+
   memset(msg, 0, sizeof(msg));
 
   if(op[0] == 'f')
@@ -133,22 +135,22 @@ void initiateRandomCalcProtocol(calcProtocol *protocolMsg)
 
     if(strcmp(op,"fadd")==0)
     {
-      //fresult=fv1+fv2;
+      
       protocolMsg->arith = 5;
     } 
     else if (strcmp(op, "fsub")==0)
     {
-      //fresult=fv1-fv2;
+      
       protocolMsg->arith = 6;
     } 
     else if (strcmp(op, "fmul")==0)
     {
-      //fresult=fv1*fv2;
+      
       protocolMsg->arith = 7;
     } 
     else if (strcmp(op, "fdiv")==0)
     {
-      //fresult=fv1/fv2;
+      
       protocolMsg->arith = 8;
     }
     #ifdef DEBUG
@@ -167,27 +169,24 @@ void initiateRandomCalcProtocol(calcProtocol *protocolMsg)
     protocolMsg->flResult = (double)0;
     if(strcmp(op,"add")==0)
     {
-      //iresult=iv1+iv2;
+      
       protocolMsg->arith = 1;
     } 
     else if (strcmp(op, "sub")==0)
     {
-      //iresult=iv1-iv2;
+      
       protocolMsg->arith = 2;
     }
     else if (strcmp(op, "mul")==0)
     {
-      //iresult=iv1*iv2;
+      
       protocolMsg->arith = 3;
     } 
     else if (strcmp(op, "div")==0)
     {
-      //iresult=iv1/iv2;
       protocolMsg->arith = 4;
     }
-    #ifdef DEBUG
-    printf("Servers result: %d",iresult);
-    #endif
+    
   }
   convertCalcProtocolToSendable(protocolMsg);
 }
@@ -196,45 +195,51 @@ void initiateRandomCalcProtocol(calcProtocol *protocolMsg)
 bool compareResult(calcProtocol *protocolMsg)
 {
   bool correctResult = false;
-  double fv1,fv2,fresult;
-  int iv1 ,iv2 ,iresult;
+  double fresult;
+  int iresult;
   double quotient;
-  
+  printf("inside CimpareResult! ! ! \nPrptpcolMsg arith = %d",protocolMsg->arith);
+
   if(protocolMsg->arith == 5)
   {
     fresult=protocolMsg->flValue1+ protocolMsg->flValue2;
-    quotient = abs(fresult - protocolMsg->inResult);
+    
+    quotient = abs(fresult - protocolMsg->flResult);
     if(quotient < 0.0001)
     {
       correctResult = true;
     }
+    printf("fresult = %8.8g\nDelta = %8.8g\n",fresult, quotient);
   }
   else if (protocolMsg->arith == 6)
   {
     fresult=protocolMsg->flValue1 - protocolMsg->flValue2;
-    quotient = abs(fresult - protocolMsg->inResult);
+    quotient = abs(fresult - protocolMsg->flResult);
     if(quotient < 0.0001)
     {
       correctResult = true;
     }
+    printf("fresult = %8.8g\nDelta = %8.8g\n",fresult, quotient);
   } 
   else if (protocolMsg->arith == 7)
   {
     fresult=protocolMsg->flValue1 * protocolMsg->flValue2;
-    quotient = abs(fresult - protocolMsg->inResult);
+    quotient = abs(fresult - protocolMsg->flResult);
     if(quotient < 0.0001)
     {
       correctResult = true;
     }
+    printf("fresult = %8.8g\nDelta = %8.8g\n",fresult, quotient);
   } 
   else if (protocolMsg->arith == 8)
   {
     fresult=protocolMsg->flValue1 / protocolMsg->flValue2;
-    quotient = abs(fresult - protocolMsg->inResult);
+    quotient = abs(fresult - protocolMsg->flResult);
     if(quotient < 0.0001)
     {
       correctResult = true;
     }
+    printf("fresult = %8.8g\nDelta = %8.8g\n",fresult, quotient);
   }
   else if(protocolMsg->arith == 1)
   {
@@ -243,6 +248,7 @@ bool compareResult(calcProtocol *protocolMsg)
     {
       correctResult = true;
     }
+    printf("Inresult = %d\n",iresult);
   } 
   else if (protocolMsg->arith == 2)
   {
@@ -251,6 +257,7 @@ bool compareResult(calcProtocol *protocolMsg)
     {
       correctResult = true;
     }
+    printf("Inresult = %d\n",iresult);
   }
   else if (protocolMsg->arith == 3)
   {
@@ -259,6 +266,7 @@ bool compareResult(calcProtocol *protocolMsg)
     {
       correctResult = true;
     }
+    printf("Inresult = %d\n",iresult);
   } 
   else if (protocolMsg->arith == 4)
   {
@@ -267,6 +275,7 @@ bool compareResult(calcProtocol *protocolMsg)
     {
       correctResult = true;
     }
+    printf("Inresult = %d\n",iresult);
   }
   return correctResult;
 }
@@ -302,21 +311,22 @@ int main(int argc, char *argv[]){
   alarmTime.it_value.tv_usec=10;
 
   /* Regiter a callback function, associated with the SIGALRM signal, which will be raised when the alarm goes of */
+  /*
   signal(SIGALRM, checkJobbList);
   setitimer(ITIMER_REAL,&alarmTime,NULL); //Start/register the alarm. 
-
+  
   
   while(terminate==0){
     printf("This is the main loop, %d time.\n",loopCount);
     sleep(1);
     loopCount++;
   }
-
+  */
   printf("done.\n");
 
   struct sockaddr_storage remoteaddr; // klient address  
   socklen_t addrlen;
-  struct addrinfo hints, *servinfo, *p, *clientinfo;
+  struct addrinfo hints, *servinfo, *p;
   int recivedValue;
   int serverSocket;
   int numbytes;
@@ -332,7 +342,7 @@ int main(int argc, char *argv[]){
   hints.ai_socktype = SOCK_DGRAM; // <<--- TRANSPORT PROTOCOL!!
   hints.ai_flags = AI_PASSIVE; 
 
-  calcMessage okMsg, notOkMsg;
+  calcMessage okMsg, notOkMsg, notSupported;
   okMsg.major_version = 1;
   okMsg.minor_version = 0;
   okMsg.message = 1;
@@ -348,6 +358,14 @@ int main(int argc, char *argv[]){
   notOkMsg.type = 2;
 
   convertCalcMsgToSendable(&notOkMsg);
+
+  notSupported.type = 2;
+  notSupported.message = 2;
+  notSupported.major_version = 1;
+  notSupported.minor_version = 0;
+  notSupported.type = 2;
+  
+  convertCalcMsgToSendable(&notSupported);
 
   if ((recivedValue = getaddrinfo(Desthost, Destport, &hints, &servinfo)) != 0) 
   {
@@ -393,9 +411,6 @@ int main(int argc, char *argv[]){
 
   addrlen = sizeof(addrlen);
 
-  int klient_socket;
-  int dL, sL;
-
 
   calcProtocol *calcPtr = new calcProtocol;
   calcProtocol *tempCalcPtr = new calcProtocol;
@@ -403,15 +418,14 @@ int main(int argc, char *argv[]){
 
   struct clientAddrArr
   {
-    struct sockaddr_in *ai_addr;
+    struct sockaddr_storage *clientInfo;
     struct addrinfo test;
     socklen_t ai_addrlen;
     struct calcProtocol *clientCalcProtocol;
-    uint32_t idNr;
   };
 
   clientAddrArr savedClients[1];
-  sockaddr_in clientIn;
+  sockaddr_storage clientIn;
   struct addrinfo testClient;
   socklen_t clientinSize = sizeof(clientIn);
   socklen_t testClientSize = sizeof(testClient);
@@ -420,8 +434,9 @@ int main(int argc, char *argv[]){
     /*
     numbytes = recvfrom(serverSocket, calcPtr, sizeof(*calcPtr), 0,
     (struct sockaddr *)&clientIn,&clientinSize);*/
+    memset(calcPtr,0,sizeof(*calcPtr));
     numbytes = recvfrom(serverSocket, calcPtr, sizeof(*calcPtr), 0,
-    (struct sockaddr *)&testClient,&testClientSize);
+    (struct sockaddr *)&clientIn,&clientinSize);
 
     if(numbytes < 0) 
     {
@@ -431,39 +446,35 @@ int main(int argc, char *argv[]){
     else
     {
       //Make it so it works with more structs and make sure to dynamically allocate the array
+      
       /*
-      savedClients[0].ai_addr->sin_addr = clientIn.sin_addr;
-      savedClients[0].ai_addrlen = sizeof(clientinSize);
-      savedClients[0].clientCalcProtocol = calcPtr;
-      */
-
       savedClients[0].test.ai_addr = testClient.ai_addr;
       savedClients[0].test.ai_addrlen = sizeof(testClientSize);
-      savedClients[0].clientCalcProtocol = calcPtr;
-
+      */
     }
 
     //Client Skickar sitt svar.... 
     if(numbytes == sizeof(calcProtocol))
     {
+      printf("HEJ DU\n");
       convertCalcProtocolToPrintable(calcPtr);
-
-      inet_ntop(savedClients[0].test.ai_family, get_in_addr((struct sockaddr *)savedClients[0].test.ai_addr),
+      printf("Arith= %d\n",calcPtr->arith);
+      inet_ntop(savedClients[0].clientInfo->ss_family, get_in_addr((struct sockaddr *)savedClients[0].clientInfo),
 			readableIp1, sizeof(readableIp1));
-
-      inet_ntop(testClient.ai_family, get_in_addr((struct sockaddr *)testClient.ai_addr),
+      
+      inet_ntop(clientIn.ss_family, get_in_addr((struct sockaddr *)&clientIn),
 			readableIp2, sizeof(readableIp2));
-
+      
       //kolla ip också! 
-      if(savedClients[0].clientCalcProtocol->id == calcPtr->id && readableIp1 == readableIp2)
+      if(savedClients[0].clientCalcProtocol->id == calcPtr->id && strcmp(readableIp1,readableIp2) == 0)
       {
         //should calculate the result and see if the client got same answer.
-        
-        if(compareResult(savedClients[0].clientCalcProtocol) == true)
+        printf("TEST \n");
+        if(compareResult(calcPtr) == true)
         {
           //send a calcmsg that says it was ok
-          
-          numbytes = sendto(serverSocket,&okMsg,sizeof(calcMessage), 0, (struct sockaddr *)savedClients[0].ai_addr,savedClients[0].ai_addrlen);
+          printf("before sending ok msg\n");
+          numbytes = sendto(serverSocket,&okMsg,sizeof(calcMessage), 0, (struct sockaddr*)&clientIn,clientinSize);
           if(numbytes < 0)
           {
             fprintf(stderr,"sendTo error");
@@ -474,8 +485,8 @@ int main(int argc, char *argv[]){
         else
         {
           //send A calcMsg that says it was rejected
-
-          numbytes = sendto(serverSocket,&notOkMsg,sizeof(calcMessage), 0, (struct sockaddr *)savedClients[0].ai_addr,savedClients[0].ai_addrlen);
+          printf("before sending Notok msg\n");
+          numbytes = sendto(serverSocket,&notOkMsg,sizeof(calcMessage), 0, (struct sockaddr*)&clientIn,clientinSize);
           if(numbytes < 0)
           {
             fprintf(stderr,"sendTo error");
@@ -493,25 +504,41 @@ int main(int argc, char *argv[]){
       if(checkIfSupports(msgPtr) == true)
       {
         //protocol supported initiated and send calcprotocol
-        tempCalcPtr->id = 1;
-        //intiates and converts to sendable
-        initiateRandomCalcProtocol(tempCalcPtr);
 
-        numbytes = sendto(serverSocket,&tempCalcPtr,sizeof(tempCalcPtr), 0, (struct sockaddr*)savedClients[0].ai_addr,savedClients[0].ai_addrlen);
+        savedClients[0].clientInfo = &clientIn;
+        savedClients[0].ai_addrlen = sizeof(clientinSize);
+    
+        //intiates and converts to sendable
+        initiateRandomCalcProtocol(tempCalcPtr, 0);
+        printf("before sending Supports  msg\n");
+        numbytes = sendto(serverSocket,tempCalcPtr,sizeof(*tempCalcPtr), 0, (struct sockaddr*)&clientIn,clientinSize);
         if(numbytes < 0)
         {
           fprintf(stderr,"sendTo error");
           break;
+        }
+        else
+        {
+          savedClients[0].clientCalcProtocol = tempCalcPtr;
         }
         continue;
       }
       else
       {
         //protocol not supoorted send back a calcMessage
-
+        printf("before sending does not support msg\n");
+        numbytes = sendto(serverSocket,&notSupported,sizeof(calcMessage), 0, (struct sockaddr*)&clientIn,clientinSize);
+        if(numbytes < 0)
+        {
+          fprintf(stderr,"sendTo error");
+          break;
+        }
+        #ifdef DEBUG
+        printf("Sent Not supported msg size: %d", numbytes);
+        #endif
+        continue;
       }
     }
-
   }
 
   delete calcPtr;
