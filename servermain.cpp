@@ -15,7 +15,7 @@
 #include <calcLib.h>
 
 #include "protocol.h"
-
+#define UX
 
 using namespace std;
 /* Needs to be global, to be rechable by callback and main */
@@ -33,7 +33,7 @@ struct clientAddrArr
   struct timeval time;
 };
 
-clientAddrArr savedClients[100];
+clientAddrArr savedClients[1000];
 
 
 bool removeAClient(int index)
@@ -52,7 +52,7 @@ bool removeAClient(int index)
 void checkJobbList(int signum){
   //As anybody can call the handler, its good coding to check the signal number that called it.§
 
-  printf("Checking for inactive jobs.\n");
+  printf("Checking for inactive jobs.\nNr Of clients before checking: %d\n",nrOfClients);
   
 
   if(signum == SIGALRM)
@@ -71,6 +71,7 @@ void checkJobbList(int signum){
     }
   }
   
+  printf("nrOfclients after checking: %d",nrOfClients);
   #ifdef DEBUG
   
   #endif
@@ -245,7 +246,6 @@ bool compareResult(calcProtocol *protocolMsg)
   double fresult;
   int iresult;
   double quotient;
-  printf("inside CimpareResult! ! ! \nPrptpcolMsg arith = %d",protocolMsg->arith);
 
   if(protocolMsg->arith == 5)
   {
@@ -386,6 +386,7 @@ int main(int argc, char *argv[]){
   int serverSocket;
   int numbytes;
   int yes = 1;
+  int idCounter = 0;
 
   char readableIp1[INET6_ADDRSTRLEN];
   char readableIp2[INET6_ADDRSTRLEN];
@@ -397,7 +398,7 @@ int main(int argc, char *argv[]){
   hints.ai_socktype = SOCK_DGRAM; // <<--- TRANSPORT PROTOCOL!!
   hints.ai_flags = AI_PASSIVE; 
 
-  calcMessage okMsg, notOkMsg, notSupported;
+  calcMessage okMsg, notOkMsg;
   okMsg.major_version = 1;
   okMsg.minor_version = 0;
   okMsg.message = 1;
@@ -414,13 +415,7 @@ int main(int argc, char *argv[]){
 
   convertCalcMsgToSendable(&notOkMsg);
 
-  notSupported.type = 2;
-  notSupported.message = 2;
-  notSupported.major_version = 1;
-  notSupported.minor_version = 0;
-  notSupported.type = 2;
-  
-  convertCalcMsgToSendable(&notSupported);
+  //UX Hade 2 st notSupported.type = 2 fixat till protocol = 17 samt ändrade msg till 0 från 2
 
   if ((recivedValue = getaddrinfo(Desthost, Destport, &hints, &servinfo)) != 0) 
   {
@@ -489,13 +484,10 @@ int main(int argc, char *argv[]){
       continue;
 		}
     
-    //Make it so it works with more structs 
-    
-
     //Client Skickar sitt svar.... 
     if(numbytes == sizeof(calcProtocol))
     {
-      printf("HEJ DU\n");
+      
       convertCalcProtocolToPrintable(calcPtr);
       
       #ifdef DEBUG
@@ -513,6 +505,10 @@ int main(int argc, char *argv[]){
         
         port1 = get_in_port((struct sockaddr *)&clientIn);
         port2 = get_in_port((struct sockaddr *)savedClients[i].clientInfo);
+
+        #ifdef UX
+        convertCalcProtocolToPrintable(savedClients[i].clientCalcProtocol);
+        #endif
         if(savedClients[i].clientCalcProtocol->id == calcPtr->id && strcmp(readableIp1,readableIp2) == 0 && clientFound != true
         && port1 == port2)
         {
@@ -522,15 +518,14 @@ int main(int argc, char *argv[]){
       }
       
       
-      //kolla ip också! 
       if(clientFound == true)
       {
-        //should calculate the result and see if the client got same answer.
-        printf("TEST \n");
+        //should calculate the result and see if the client got the same answer.
+        
         if(compareResult(calcPtr) == true)
         {
           //send a calcmsg that says it was ok
-          printf("before sending ok msg\n");
+          
           numbytes = sendto(serverSocket,&okMsg,sizeof(calcMessage), 0, (struct sockaddr*)&clientIn,clientinSize);
           if(numbytes < 0)
           {
@@ -539,7 +534,10 @@ int main(int argc, char *argv[]){
           }
           for(int i = 0; i < nrOfClients; i++)
           {
-            removeAClient(i);
+            //hade removeAClient(i) ändrade till remove a Client till currentClient UX
+            printf("nrOfclinets innan removeAClient: %d\n",nrOfClients);
+            removeAClient(currentClient);
+            printf("nrOfclinets efter removeAClient: %d\n",nrOfClients);
           }
           continue;
         }
@@ -570,7 +568,7 @@ int main(int argc, char *argv[]){
         continue;
       }
     }
-    else//either supports or not
+    else if(numbytes == sizeof(calcMessage))//either supports or not
     {
       msgPtr = (calcMessage *)calcPtr;
       convertCalcMsgToPrintable(msgPtr);
@@ -582,7 +580,7 @@ int main(int argc, char *argv[]){
         savedClients[nrOfClients].ai_addrlen = sizeof(clientinSize);
     
         //intiates and converts to sendable
-        initiateRandomCalcProtocol(tempCalcPtr, nrOfClients);
+        initiateRandomCalcProtocol(tempCalcPtr, idCounter++);
         #ifdef DEBUG
         printf("before sending Supports  msg\n");
         #endif
@@ -603,7 +601,7 @@ int main(int argc, char *argv[]){
       {
         //protocol not supoorted send back a calcMessage
         printf("before sending does not support msg\n");
-        numbytes = sendto(serverSocket,&notSupported,sizeof(calcMessage), 0, (struct sockaddr*)&clientIn,clientinSize);
+        numbytes = sendto(serverSocket,&notOkMsg,sizeof(calcMessage), 0, (struct sockaddr*)&clientIn,clientinSize);
         if(numbytes < 0)
         {
           fprintf(stderr,"sendTo error");
@@ -614,6 +612,17 @@ int main(int argc, char *argv[]){
         #endif
         continue;
       }
+    }
+    else // UX tillagd koll på om storleken == calcmsg och tillagd else fall där skräp kommer.
+    {
+      printf("Rubbish msg need to be calcMSG first!\n");
+      numbytes = sendto(serverSocket,&notOkMsg,sizeof(calcMessage), 0, (struct sockaddr*)&clientIn,clientinSize);
+      if(numbytes < 0)
+      {
+        fprintf(stderr,"sendTo error");
+        break;
+      }
+      continue;
     }
   }
   delete calcPtr;
