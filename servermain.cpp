@@ -474,6 +474,7 @@ int main(int argc, char *argv[]){
   socklen_t clientinSize = sizeof(clientIn);
   while(1)
   {
+    
     memset(calcPtr,0,sizeof(*calcPtr));
     numbytes = recvfrom(serverSocket, calcPtr, sizeof(*calcPtr), 0,
     (struct sockaddr *)&clientIn,&clientinSize);
@@ -521,7 +522,7 @@ int main(int argc, char *argv[]){
       if(clientFound == true)
       {
         //should calculate the result and see if the client got the same answer.
-        
+        clientFound = false;
         if(compareResult(calcPtr) == true)
         {
           //send a calcmsg that says it was ok
@@ -535,9 +536,8 @@ int main(int argc, char *argv[]){
           for(int i = 0; i < nrOfClients; i++)
           {
             //hade removeAClient(i) ändrade till remove a Client till currentClient UX
-            printf("nrOfclinets innan removeAClient: %d\n",nrOfClients);
             removeAClient(currentClient);
-            printf("nrOfclinets efter removeAClient: %d\n",nrOfClients);
+            
           }
           continue;
         }
@@ -572,12 +572,14 @@ int main(int argc, char *argv[]){
     {
       msgPtr = (calcMessage *)calcPtr;
       convertCalcMsgToPrintable(msgPtr);
+      
       if(checkIfSupports(msgPtr) == true)
       {
         //protocol supported initiated and send calcprotocol
 
         savedClients[nrOfClients].clientInfo = &clientIn;
         savedClients[nrOfClients].ai_addrlen = sizeof(clientinSize);
+        
     
         //intiates and converts to sendable
         initiateRandomCalcProtocol(tempCalcPtr, idCounter++);
